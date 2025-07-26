@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Test {
+  id   String @id @default(cuid())
+  name String
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  firstName          String
+  lastName           String
+  birthDate          DateTime
+  packageType        String
+  packageExpiresAt   DateTime
+  streak             Int      @default(0)
+  challengesPlayed   Int      @default(0)
+  prizesWon          Int      @default(0)
+  prizesValue        Decimal  @default(0)
+  level              Int      @default(1)
+  joinedAt           DateTime @default(now())
+  email              String   @unique
+  passwordHash       String
+
+  participants       Participant[]
+}
+
+model Game {
+  id                    String      @id @default(cuid())
+  name                  String
+  type                  String                          // "timer", "steps", "quiz"
+  description           String?
+  challenges            Challenge[]
+  attemptFrequency      String?     @default("daily")   // "daily", "hourly", "weekly"
+  maxAttemptsPerDay     Int?        @default(1)         // quanti tentativi al giorno
+  resetTime             String?     @default("00:00")   // ora di reset (HH:mm)
+  
+  // Configurazione specifica del gioco (JSON flessibile)
+  gameConfig            Json?       // { targetMillis: 10000, maxSteps: 10000, questions: [...] }
+  
+  createdAt             DateTime    @default(now())
+}
+
+model Challenge {
+  id              String         @id @default(cuid())
+  name            String
+  description     String?
+  gameId          String
+  game            Game           @relation(fields: [gameId], references: [id])
+  gameMode        String         // free, premium, ecc.
+  price           Decimal        @default(0)
+  prize           Decimal        @default(0)
+  startDate       DateTime
+  endDate         DateTime
+  joinDeadline    DateTime
+  maxParticipants Int
+  rules           String?
+  visibility      String         // public / private
+  participants    Participant[]
+  createdAt       DateTime       @default(now())
+}
+
+model Participant {
+  userId      String
+  challengeId String
+  user        User       @relation(fields: [userId], references: [id])
+  challenge   Challenge  @relation(fields: [challengeId], references: [id])
+  
+  // ✨ NUOVO: Tentativi generici per qualsiasi gioco
+  attempts    GameAttempt[]
+  
+  score       Int        @default(0)
+  rank        Int?
+  joinedAt    DateTime   @default(now())
+
+  @@id([userId, challengeId])
+}
+
+// ✨ NUOVO: Tabella unificata per tutti i giochi
+model GameAttempt {
+  id                     String      @id @default(cuid())
+  participantUserId      String
+  participantChallengeId String
+  
+  participant Participant @relation(fields: [participantUserId, participantChallengeId], references: [userId, challengeId])
+  
+  // Campi comuni a tutti i giochi
+  gameType               String      // "timer", "steps", "quiz"
+  score                  Int         // punteggio finale calcolato
+  attemptDate           DateTime    @default(now())
+  
+  // Dati specifici del gioco (JSON flessibile)
+  gameData              Json        // Vedi esempi sotto
+  
+  createdAt             DateTime    @default(now())
+
+  @@index([participantUserId, participantChallengeId])
+  @@index([participantUserId, participantChallengeId, attemptDate])
+  @@index([gameType, score])  // Per classifiche per tipo di gioco
+}
