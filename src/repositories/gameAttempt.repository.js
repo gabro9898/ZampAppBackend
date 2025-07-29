@@ -1,36 +1,53 @@
-// src/repositories/timerAttempt.repository.js (AGGIORNATO)
+// src/repositories/gameAttempt.repository.js
 import { PrismaClient } from '../../generated/prisma/index.js';
 const prisma = new PrismaClient();
 
-export const create = ({ userId, challengeId, elapsedMillis, diffMillis, attemptDate }) =>
-  prisma.timerAttempt.create({
+// Crea un tentativo generico (qualsiasi gioco)
+export const create = ({
+  participantUserId,
+  participantChallengeId,
+  gameType,
+  score,
+  gameData,
+  attemptDate,
+}) =>
+  prisma.gameAttempt.create({
     data: {
-      participantUserId: userId,
-      participantChallengeId: challengeId,
-      elapsedMillis,
-      diffMillis,
-      attemptDate: attemptDate || new Date() // Se non specificato, usa ora
-    }
+      participantUserId,
+      participantChallengeId,
+      gameType,
+      score,
+      gameData,
+      attemptDate: attemptDate || new Date(),
+    },
   });
 
+// Classifica aggregata (usata per leaderboard generica)
 export const leaderboard = (challengeId) =>
-  prisma.timerAttempt.groupBy({
+  prisma.gameAttempt.groupBy({
     by: ['participantUserId'],
     where: { participantChallengeId: challengeId },
-    _sum: { diffMillis: true },
-    orderBy: { _sum: { diffMillis: 'asc' } }
+    _min: { score: true },
+    orderBy: { _min: { score: 'asc' } },
   });
 
-// Trova tentativi per utente in un range di date
-export const findByUserAndDateRange = (userId, challengeId, startDate, endDate) =>
-  prisma.timerAttempt.findMany({
+// Conta tentativi utente in un range
+export const countByUserInRange = (userId, challengeId, start, end) =>
+  prisma.gameAttempt.count({
     where: {
-      participantUserId: userId,
+      participantUserId:      userId,
       participantChallengeId: challengeId,
-      attemptDate: {
-        gte: startDate,
-        lte: endDate
-      }
+      attemptDate:            { gte: start, lte: end },
     },
-    orderBy: { attemptDate: 'desc' }
+  });
+
+// Miglior tentativo utente in un range
+export const bestByUserInRange = (userId, challengeId, start, end) =>
+  prisma.gameAttempt.findFirst({
+    where: {
+      participantUserId:      userId,
+      participantChallengeId: challengeId,
+      attemptDate:            { gte: start, lte: end },
+    },
+    orderBy: { score: 'asc' },
   });

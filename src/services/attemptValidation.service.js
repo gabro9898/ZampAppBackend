@@ -46,7 +46,7 @@ export class AttemptValidationService {
     const todayRange = DateUtils.getTodayRange(resetTime);
 
     // 5. Conta i tentativi di oggi
-    const todayAttempts = await prisma.timerAttempt.count({
+    const todayAttempts = await prisma.gameAttempt.count({
       where: {
         participantUserId: userId,
         participantChallengeId: challengeId,
@@ -94,7 +94,7 @@ export class AttemptValidationService {
     const todayRange = DateUtils.getTodayRange(resetTime);
 
     // Tentativi totali
-    const totalAttempts = await prisma.timerAttempt.count({
+    const totalAttempts = await prisma.gameAttempt.count({
       where: {
         participantUserId: userId,
         participantChallengeId: challengeId
@@ -102,7 +102,7 @@ export class AttemptValidationService {
     });
 
     // Tentativi di oggi
-    const todayAttempts = await prisma.timerAttempt.count({
+    const todayAttempts = await prisma.gameAttempt.count({
       where: {
         participantUserId: userId,
         participantChallengeId: challengeId,
@@ -114,7 +114,7 @@ export class AttemptValidationService {
     });
 
     // Miglior tentativo di oggi
-    const bestTodayAttempt = await prisma.timerAttempt.findFirst({
+    const bestTodayAttempt = await prisma.gameAttempt.findFirst({
       where: {
         participantUserId: userId,
         participantChallengeId: challengeId,
@@ -127,7 +127,7 @@ export class AttemptValidationService {
     });
 
     // Miglior tentativo assoluto
-    const bestOverallAttempt = await prisma.timerAttempt.findFirst({
+    const bestOverallAttempt = await prisma.gameAttempt.findFirst({
       where: {
         participantUserId: userId,
         participantChallengeId: challengeId

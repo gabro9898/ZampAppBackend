@@ -1,3 +1,4 @@
+// src/repositories/challenge.repository.js
 import { PrismaClient } from '../../generated/prisma/index.js';
 const prisma = new PrismaClient();
 
@@ -10,7 +11,16 @@ export const findAll = () =>
   prisma.challenge.findMany({
     include: {
       game: true,
-      _count: { select: { participants: true } }
+      participants: {
+        select: {
+          userId: true
+        }
+      },
+      _count: { 
+        select: { 
+          participants: true 
+        } 
+      }
     },
     orderBy: { startDate: 'desc' }
   });
@@ -20,7 +30,16 @@ export const findById = (id) =>
     where: { id },
     include: { 
       game: true,
-      _count: { select: { participants: true } } 
+      participants: {
+        select: {
+          userId: true
+        }
+      },
+      _count: { 
+        select: { 
+          participants: true 
+        } 
+      } 
     }
   });
 

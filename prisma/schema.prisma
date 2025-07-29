@@ -20,16 +20,26 @@ model User {
   birthDate          DateTime
   packageType        String
   packageExpiresAt   DateTime
+  
+  // Sistema di progressione
+  xp                 Int      @default(0)
+  level              Int      @default(1)
   streak             Int      @default(0)
+  lastPlayedDate     DateTime?
+  
+  // Statistiche esistenti
   challengesPlayed   Int      @default(0)
   prizesWon          Int      @default(0)
   prizesValue        Decimal  @default(0)
-  level              Int      @default(1)
-  joinedAt           DateTime @default(now())
+  
+  // Auth
   email              String   @unique
   passwordHash       String
-
+  
+  // Relazioni
   participants       Participant[]
+  
+  joinedAt           DateTime @default(now())
 }
 
 model Game {
@@ -41,6 +51,8 @@ model Game {
   attemptFrequency      String?     @default("daily")   // "daily", "hourly", "weekly"
   maxAttemptsPerDay     Int?        @default(1)         // quanti tentativi al giorno
   resetTime             String?     @default("00:00")   // ora di reset (HH:mm)
+   elapsedMillis Int?     // tempo misurato in ms
+  diffMillis    Int?      // |elapsedMillis - target|
   
   // Configurazione specifica del gioco (JSON flessibile)
   gameConfig            Json?       // { targetMillis: 10000, maxSteps: 10000, questions: [...] }

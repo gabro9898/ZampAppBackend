@@ -1,9 +1,11 @@
-// src/services/timerAttempt.service.js (AGGIORNATO)
+// src/services/timerAttempt.service.js
+
 import * as repo from '../repositories/gameAttempt.repository.js';
 import * as challengeRepo from '../repositories/challenge.repository.js';
 import { GameEngineFactory } from '../games/GameEngineFactory.js';
 import { AttemptValidationService } from './attemptValidation.service.js';
 import { PrismaClient } from '../../generated/prisma/index.js';
+import { UserProgressionService } from './userProgression.service.js';
 
 const prisma = new PrismaClient();
 
@@ -41,17 +43,22 @@ export async function save(userId, challengeId, attemptData) {
     challengeId,
     elapsedMillis: scoreData.elapsedMillis,
     diffMillis: scoreData.diffMillis,
-    attemptDate: new Date() // Timestamp preciso del tentativo
+    attemptDate: new Date()
   });
   
   // 6. Aggiorna il miglior punteggio del partecipante (logica giornaliera)
   await updateParticipantBestScore(userId, challengeId, scoreData.score, participant.challenge.game.resetTime);
-  
+
+  // 7. Aggiorna progressione utente
+  const isFirstToday = await UserProgressionService.isFirstAttemptToday(userId);
+  await UserProgressionService.updateAfterAttempt(userId, challengeId, isFirstToday);
+
+  // 8. Restituisci risultato completo
   return {
     ...attempt,
     ...scoreData,
     validation: {
-      attemptsToday: validation.attemptsToday + 1, // +1 perché abbiamo appena fatto il tentativo
+      attemptsToday: validation.attemptsToday + 1,
       maxAttempts: validation.maxAttempts,
       resetTime: validation.resetTime
     }
@@ -62,9 +69,7 @@ async function updateParticipantBestScore(userId, challengeId, newScore, resetTi
   const participant = await prisma.participant.findUnique({
     where: { userId_challengeId: { userId, challengeId } }
   });
-  
-  // Strategia: aggiorna solo se è il miglior punteggio assoluto
-  // (puoi cambiare questa logica per calcolare diversamente)
+
   if (participant.score === 0 || newScore < participant.score) {
     await prisma.participant.update({
       where: { userId_challengeId: { userId, challengeId } },
@@ -74,13 +79,12 @@ async function updateParticipantBestScore(userId, challengeId, newScore, resetTi
 }
 
 export async function leaderboard(challengeId) {
-  // Leaderboard basata sul miglior punteggio assoluto di ogni utente
   const participants = await prisma.participant.findMany({
     where: { challengeId },
     orderBy: { score: 'asc' },
     include: { 
       user: { select: { firstName: true, lastName: true } },
-      timerAttempts: { orderBy: { createdAt: 'desc' }, take: 1 } // ultimo tentativo
+      gameAttempt: { orderBy: { createdAt: 'desc' }, take: 1 }
     }
   });
 
@@ -89,22 +93,19 @@ export async function leaderboard(challengeId) {
     userId: participant.userId,
     name: `${participant.user.firstName} ${participant.user.lastName}`,
     bestScore: participant.score,
-    totalAttempts: participant.timerAttempts.length,
-    lastAttempt: participant.timerAttempts[0]?.createdAt || participant.joinedAt
+    totalAttempts: participant.gameAttempt.length,
+    lastAttempt: participant.gameAttempt[0]?.createdAt || participant.joinedAt
   }));
 }
 
 export async function getDailyLeaderboard(challengeId, date = new Date()) {
-  // Leaderboard solo per un giorno specifico
   const challenge = await challengeRepo.findById(challengeId);
   if (!challenge) throw new Error('Challenge not found');
 
   const resetTime = challenge.game?.resetTime || "00:00";
-  
-  // Ottieni il range del giorno
+
   const dayRange = DateUtils.getTodayRange(resetTime);
   if (date) {
-    // Se è specificata una data, calcola il range per quella data
     const [hours, minutes] = resetTime.split(':').map(Number);
     dayRange.start = new Date(date);
     dayRange.start.setHours(hours, minutes, 0, 0);
@@ -113,13 +114,12 @@ export async function getDailyLeaderboard(challengeId, date = new Date()) {
     dayRange.end.setMilliseconds(-1);
   }
 
-  // Query per migliori tentativi del giorno
   const dailyBests = await prisma.$queryRaw`
     SELECT 
       "participantUserId",
       MIN("diffMillis") as "bestDailyScore",
       COUNT(*) as "attemptsToday"
-    FROM "TimerAttempt" 
+    FROM "gameAttempt" 
     WHERE "participantChallengeId" = ${challengeId}
       AND "attemptDate" >= ${dayRange.start}
       AND "attemptDate" <= ${dayRange.end}
@@ -127,13 +127,12 @@ export async function getDailyLeaderboard(challengeId, date = new Date()) {
     ORDER BY "bestDailyScore" ASC
   `;
 
-  // Aggiungi i nomi degli utenti
   return Promise.all(dailyBests.map(async (row, i) => {
     const user = await prisma.user.findUnique({
       where: { id: row.participantUserId },
       select: { firstName: true, lastName: true }
     });
-    
+
     return {
       rank: i + 1,
       userId: row.participantUserId,
@@ -143,4 +142,4 @@ export async function getDailyLeaderboard(challengeId, date = new Date()) {
       date: date
     };
   }));
-}
+  }
