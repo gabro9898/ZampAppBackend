@@ -18,7 +18,7 @@ model User {
   firstName          String
   lastName           String
   birthDate          DateTime
-  packageType        String
+  packageType        String   // "free", "pro", "premium", "vip"
   packageExpiresAt   DateTime
   
   // Sistema di progressione
@@ -38,6 +38,7 @@ model User {
   
   // Relazioni
   participants       Participant[]
+  purchasedChallenges PurchasedChallenge[]  // ✨ NUOVO
   
   joinedAt           DateTime @default(now())
 }
@@ -51,7 +52,8 @@ model Game {
   attemptFrequency      String?     @default("daily")   // "daily", "hourly", "weekly"
   maxAttemptsPerDay     Int?        @default(1)         // quanti tentativi al giorno
   resetTime             String?     @default("00:00")   // ora di reset (HH:mm)
-   elapsedMillis Int?     // tempo misurato in ms
+  
+  elapsedMillis Int?     // tempo misurato in ms
   diffMillis    Int?      // |elapsedMillis - target|
   
   // Configurazione specifica del gioco (JSON flessibile)
@@ -66,7 +68,7 @@ model Challenge {
   description     String?
   gameId          String
   game            Game           @relation(fields: [gameId], references: [id])
-  gameMode        String         // free, premium, ecc.
+  gameMode        String         // "free", "pro", "premium", "vip", "paid"
   price           Decimal        @default(0)
   prize           Decimal        @default(0)
   startDate       DateTime
@@ -74,9 +76,32 @@ model Challenge {
   joinDeadline    DateTime
   maxParticipants Int
   rules           String?
-  visibility      String         // public / private
+  visibility      String         // "public", "private", "shop"
+  
+  // ✨ NUOVO: Prezzi differenziati per pacchetto (per challenge a pagamento)
+  pricesByPackage Json?          // { "free": 15, "pro": 3, "premium": 2, "vip": 1 }
+  
   participants    Participant[]
+  purchasedBy     PurchasedChallenge[]  // ✨ NUOVO
   createdAt       DateTime       @default(now())
+}
+
+// ✨ NUOVO: Tabella per tracciare gli acquisti delle challenge
+model PurchasedChallenge {
+  id              String    @id @default(cuid())
+  userId          String
+  challengeId     String
+  user            User      @relation(fields: [userId], references: [id])
+  challenge       Challenge @relation(fields: [challengeId], references: [id])
+  
+  purchasedAt     DateTime  @default(now())
+  pricePaid       Decimal   // Prezzo effettivamente pagato
+  paymentMethod   String?   // "stripe", "paypal", etc.
+  transactionId   String?   // ID della transazione di pagamento
+  
+  @@unique([userId, challengeId])
+  @@index([userId])
+  @@index([challengeId])
 }
 
 model Participant {
@@ -91,7 +116,7 @@ model Participant {
   score       Int        @default(0)
   rank        Int?
   joinedAt    DateTime   @default(now())
-
+  
   @@id([userId, challengeId])
 }
 
@@ -112,7 +137,7 @@ model GameAttempt {
   gameData              Json        // Vedi esempi sotto
   
   createdAt             DateTime    @default(now())
-
+  
   @@index([participantUserId, participantChallengeId])
   @@index([participantUserId, participantChallengeId, attemptDate])
   @@index([gameType, score])  // Per classifiche per tipo di gioco

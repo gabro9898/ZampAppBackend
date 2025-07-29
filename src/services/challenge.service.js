@@ -1,4 +1,4 @@
-// src/services/challenge.service.js
+// src/services/challenge.service.js - Versione COMPLETA con fix per challenge paid
 import { PrismaClient } from '../../generated/prisma/index.js';
 import * as repo from '../repositories/challenge.repository.js';
 import * as partRepo from '../repositories/participant.repository.js';
@@ -24,8 +24,8 @@ export const createChallenge = async (dto) => {
   });
 };
 
+// ✨ FUNZIONE AGGIORNATA con verifica acquisto per challenge paid
 export async function joinChallenge(userId, challengeId) {
-  // Logica esistente rimane uguale
   const challenge = await repo.findById(challengeId);
   if (!challenge) throw { code: 404, message: 'Challenge non trovata' };
   
@@ -40,6 +40,35 @@ export async function joinChallenge(userId, challengeId) {
   const exists = await partRepo.find(userId, challengeId);
   if (exists) throw { message: 'Utente già iscritto' };
   
+  // ✨ NUOVO: Verifica per challenge PAID
+  if (challenge.gameMode === 'paid') {
+    const { PurchaseService } = await import('./purchase.service.js');
+    const hasPurchased = await PurchaseService.hasPurchased(userId, challengeId);
+    
+    if (!hasPurchased) {
+      throw { 
+        code: 403, 
+        message: 'Devi acquistare questa challenge prima di iscriverti' 
+      };
+    }
+  }
+  
+  // ✨ NUOVO: Verifica accesso per tipo di pacchetto
+  if (challenge.gameMode !== 'paid' && challenge.gameMode !== 'free') {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { packageType: true }
+    });
+    
+    const { PurchaseService } = await import('./purchase.service.js');
+    if (!PurchaseService.isPackageCompatible(user.packageType, challenge.gameMode)) {
+      throw { 
+        code: 403, 
+        message: `Questa challenge richiede un pacchetto ${challenge.gameMode.toUpperCase()}` 
+      };
+    }
+  }
+  
   const participant = await partRepo.create(userId, challengeId);
   await repo.incrementParticipants(challengeId);
   await partRepo.incrementUserChallenges(userId);
@@ -47,11 +76,39 @@ export async function joinChallenge(userId, challengeId) {
   return participant;
 }
 
-export async function getAllChallenges() {
-  return repo.findAll();
+export async function getAllChallenges(userId = null) {
+  const challenges = await repo.findAll();
+  
+  // Se non c'è un userId, ritorna tutte le challenge pubbliche
+  if (!userId) {
+    return challenges.filter(c => c.visibility === 'public');
+  }
+  
+  // Altrimenti, aggiungi info su acquisti e prezzi per l'utente
+  const { PurchaseService } = await import('./purchase.service.js');
+  
+  const challengesWithUserInfo = await Promise.all(
+    challenges.map(async (challenge) => {
+      // Per challenge a pagamento, verifica se è stata acquistata
+      if (challenge.gameMode === 'paid') {
+        const hasPurchased = await PurchaseService.hasPurchased(userId, challenge.id);
+        const userPrice = await PurchaseService.calculatePrice(challenge.id, userId);
+        
+        return {
+          ...challenge,
+          purchasedBy: hasPurchased ? [{ userId }] : [],
+          userPrice
+        };
+      }
+      
+      return challenge;
+    })
+  );
+  
+  return challengesWithUserInfo;
 }
 
-// *** CORREZIONE: Uso il nome corretto "attempts" dal schema Prisma ***
+// ✨ FUNZIONE AGGIORNATA per includere info su challenge paid
 export async function getUserChallenges(userId) {
   const participants = await prisma.participant.findMany({
     where: { userId },
@@ -59,10 +116,14 @@ export async function getUserChallenges(userId) {
       challenge: {
         include: {
           game: true,
-          _count: { select: { participants: true } }
+          _count: { select: { participants: true } },
+          // ✨ NUOVO: Includi info sugli acquisti per challenge paid
+          purchasedBy: {
+            where: { userId },
+            select: { userId: true }
+          }
         }
       },
-      // ✅ CORRETTO: Ora uso "attempts" come definito nel schema
       attempts: {
         select: { id: true }
       }
@@ -75,14 +136,14 @@ export async function getUserChallenges(userId) {
     score: p.score,
     rank: p.rank,
     joinedAt: p.joinedAt,
-    // ✅ Ora posso contare i tentativi correttamente
     attempts: p.attempts.length,
     // Aggiungi flag per identificare che l'utente è iscritto
-    participants: [{ userId }]
+    participants: [{ userId }],
+    // ✨ NUOVO: Mantieni info su acquisto se è una challenge paid
+    isPurchased: p.challenge.purchasedBy?.length > 0
   }));
 }
 
-// *** CORREZIONE: Uso il nome corretto "attempts" dal schema Prisma ***
 export async function getChallengeWithUserInfo(challengeId, userId) {
   const challenge = await prisma.challenge.findUnique({
     where: { id: challengeId },
@@ -90,7 +151,6 @@ export async function getChallengeWithUserInfo(challengeId, userId) {
       game: true,
       participants: {
         where: { userId },
-        // ✅ CORRETTO: Ora uso "attempts" come definito nel schema
         include: {
           attempts: {
             orderBy: { createdAt: 'desc' },
@@ -113,14 +173,12 @@ export async function getChallengeWithUserInfo(challengeId, userId) {
     isParticipating,
     userScore: userParticipant?.score,
     userRank: userParticipant?.rank,
-    // ✅ Ora posso accedere ai tentativi correttamente
     userAttempts: userParticipant?.attempts || [],
     // Assicurati che participants contenga l'userId per il frontend
     participants: isParticipating ? [{ userId }] : []
   };
 }
 
-// ✅ AGGIORNATA: Uso il nome corretto "attempts" dal schema Prisma
 export async function getUserAttemptsForChallenge(userId, challengeId) {
   try {
     // La relazione corretta è attraverso participant

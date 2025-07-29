@@ -1,4 +1,4 @@
-// src/controllers/challenge.controller.js
+// src/controllers/challenge.controller.js - Versione Completa
 import * as service from '../services/challenge.service.js';
 
 export const create = async (req, res) => {
@@ -10,9 +10,17 @@ export const create = async (req, res) => {
   }
 };
 
-export const list = async (_, res) => {
-  const list = await service.getAllChallenges?.() ?? [];
-  res.json(list);
+// ✨ FUNZIONE AGGIORNATA per passare userId
+export const list = async (req, res) => {
+  try {
+    // Passa l'userId se l'utente è autenticato
+    const userId = req.user?.id || null;
+    const list = await service.getAllChallenges(userId) ?? [];
+    res.json(list);
+  } catch (error) {
+    console.error('Error listing challenges:', error);
+    res.status(500).json({ error: 'Errore nel recupero delle challenge' });
+  }
 };
 
 export async function join(req, res) {
